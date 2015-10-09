@@ -1,0 +1,328 @@
+* Package management
+** Package archives
+- Configure endpoints for finding emacs packages to install
+  #+BEGIN_SRC emacs-lisp :tangle no
+    (setq package-archives
+          '(("gnu"       . "http://elpa.gnu.org/packages/")
+            ("org"       . "http://orgmode.org/elpa/")
+            ("melpa"     . "http://melpa.milkbox.net/packages/")
+            ("marmalade" . "http://marmalade-repo.org/packages/")))
+    (package-initialize)
+  #+END_SRC
+- *idea*: package-refresh-contents automatically every week or so when
+  starting up?  (or prompt to do so)
+** use-package
+- I'll use John Wiegley's [[https://github.com/jwiegley/use-package][use-package]] macros to manage package
+  configuration.
+  #+BEGIN_SRC emacs-lisp :tangle no
+    (unless (package-installed-p 'use-package)
+      (package-install 'use-package))
+    (setq use-package-verbose t)
+    (eval-when-compile
+      (require 'use-package))
+
+    (require 'diminish)
+    (require 'bind-key)
+  #+END_SRC
+* General config
+** Setting up the exec-path
+- On OSX, the =exec-path= isn't set correctly.  =exec-path-from-shell=
+  helps to fix this up.
+  #+BEGIN_SRC emacs-lisp
+    (when (memq window-system '(mac ns))
+      (use-package exec-path-from-shell
+        :ensure t
+        :init
+        (exec-path-from-shell-initialize)))
+  #+END_SRC
+** Load secrets
+#+BEGIN_SRC emacs-lisp
+(org-babel-load-file (expand-file-name "secrets.org" dm/config-dir))
+#+END_SRC
+** Useful configuration utility functions
+#+BEGIN_SRC emacs-lisp
+  (defun set-environment (environment-assoc-list)
+    "Call setenv on each assoc-pair in ENVIRONMENT-ASSOC-LIST,
+    using the car as the environment variable, and the cdr as its
+    value."
+    (dolist (env-var-spec environment-assoc-list)
+      (setenv (car env-var-spec) (cdr env-var-spec))))
+#+END_SRC
+** Backups
+- Store backups in a single location, and store lots of them
+  #+BEGIN_SRC emacs-lisp
+    (setq backup-directory-alist '(("." . (expand-file-name "backups" dm/config-dir))))
+    (setq delete-old-versions -1)
+    (setq version-control t)
+    (setq vc-make-backup-files t)
+    (setq auto-save-file-name-transforms '((".*" (expand-file-name "auto-save-list/" dm/config-dir))))
+  #+END_SRC
+** When using a graphical emacs
+- I don't really like using the mouse, so menus and tooltips aren't
+  particularly useful for me
+  #+BEGIN_SRC emacs-lisp
+    (when window-system
+      (tooltip-mode -1)
+      (tool-bar-mode -1)
+      (menu-bar-mode -1)
+      (scroll-bar-mode -1))
+  #+END_SRC
+- Playing around with [[http://www.emacswiki.org/emacs/UnicodeFonts][unicode fonts]].  Can find out what characters are
+  available with =M-x list-charset-chars RET unicode-bmp RET=
+  #+BEGIN_SRC emacs-lisp
+    (when window-system
+      (use-package unicode-fonts
+        :ensure t
+        :defer 1
+        :config
+        (require 'unicode-fonts)
+        (setq unicode-fonts-block-font-mapping
+              '(("Emoticons"
+                 ("Apple Color Emoji" "Symbola" "Quivira")))
+              unicode-fonts-fontset-names '("fontset-default"))
+        (unicode-fonts-setup)))
+  #+END_SRC
+** Winner mode - undoing / redoing window config
+- Keeps track of changes to window configuration; can 'undo' a change
+  with =C-c <left>= and 'redo' with =C-c <right>=.
+  #+BEGIN_SRC emacs-lisp
+    (use-package winner
+      :ensure t
+      :defer 2
+      :config (winner-mode 1))
+  #+END_SRC
+** Helm for interactive completion
+#+BEGIN_SRC emacs-lisp
+  (use-package helm-config
+    :demand t
+    :bind (("C-c h" . helm-command-prefix)
+           ("C-h a" . helm-apropos)
+           ("C-x C-b" . helm-buffers-list)
+           ("M-y" . helm-show-kill-ring)
+           ("M-x" . helm-M-x)
+           ("C-x c o" . helm-occur)
+           ("C-x c s" . helm-swoop)
+           ("C-x c SPC" . helm-all-mark-rings))
+
+    :config
+    (use-package helm-helm-commands :ensure t)
+    (use-package helm-files)
+    (use-package helm-buffers)
+    (use-package helm-mode
+      :diminish helm-mode
+      :init (helm-mode 1))
+    (use-package helm-swoop
+      :ensure t
+      :bind (("M-s s" . helm-swoop)
+             ("M-s M-s" . helm-multi-swoop)
+             ("M-s C-s" . helm-multi-swoop-all))
+      :config
+      (bind-key "M-i" 'helm-swoop-from-isearch isearch-mode-map)
+      (bind-key "M-i" 'helm-multi-swoop-all-from-helm-swoop helm-swoop-map))
+    
+    (helm-autoresize-mode 1)
+
+    (when (executable-find "curl")
+      (setq helm-google-suggest-use-curl-p t)))
+#+END_SRC
+
+** Projectile
+#+BEGIN_SRC emacs-lisp
+  (use-package ag
+    :ensure t
+    :defer 1)
+
+  (use-package projectile
+    :ensure t
+    :diminish (projectile-mode . " ⌕")
+    :commands projectile-global-mode
+    :defer 1
+    :bind-keymap ("C-c p" . projectile-command-map)
+    :bind ("C-c C-o" . projectile-ag)
+    :config
+    (use-package helm-projectile
+      :config
+      (setq projectile-completion-system 'helm)
+      (helm-projectile-on))
+    (setq projectile-enable-caching t)
+    (message "dm=> Enabling projectile global-mode")
+    (projectile-global-mode))
+#+END_SRC
+** Autocompletion
+#+BEGIN_SRC emacs-lisp
+  (use-package company
+    :ensure t
+    :diminish (company-mode . " ♾")
+    :config
+    (bind-key "C-M-i" 'company-complete company-mode-map)
+    (global-company-mode))
+#+END_SRC
+** Expand using hippie-expand
+#+BEGIN_SRC emacs-lisp
+  (bind-key "M-/" 'hippie-expand)
+#+END_SRC
+** Snippets
+- Will have to play around to find out how well this integrates with company
+  #+BEGIN_SRC emacs-lisp
+        (use-package yasnippet
+          :defer 5
+          :ensure t
+          :diminish (yas-minor-mode . " ✂")
+          :commands yas-global-mode
+          :config
+          (add-hook 'hippie-expand-try-functions-list 'yas-hippie-try-expand)
+          (setq yas-key-syntaxes '("w_" "w_." "^ "))
+          (yas-global-mode 1))
+  #+END_SRC
+- Use helm to select snippets; from [[http://emacswiki.org/emacs/Yasnippet]].
+  #+BEGIN_SRC emacs-lisp
+    (defun shk-yas/helm-prompt (prompt choices &optional display-fn)
+    "Use helm to select a snippet. Put this into `yas/prompt-functions.'"
+    (interactive)
+    (setq display-fn (or display-fn 'identity))
+    (if (require 'helm-config)
+        (let (tmpsource cands result rmap)
+          (setq cands (mapcar (lambda (x) (funcall display-fn x)) choices))
+          (setq rmap (mapcar (lambda (x) (cons (funcall display-fn x) x)) choices))
+          (setq tmpsource
+                (list
+                 (cons 'name prompt)
+                 (cons 'candidates cands)
+                 '(action . (("Expand" . (lambda (selection) selection))))
+                 ))
+          (setq result (helm-other-buffer '(tmpsource) "*helm-select-yasnippet"))
+          (if (null result)
+              (signal 'quit "user quit!")
+            (cdr (assoc result rmap))))
+      nil))
+  #+END_SRC
+** Markdown
+#+BEGIN_SRC emacs-lisp
+  (use-package markdown-mode
+    :ensure t)
+#+END_SRC
+** External programs
+#+BEGIN_SRC emacs-lisp
+  (setq browse-url-browser-function 'browse-url-default-macosx-browser)
+#+END_SRC
+* Evil mode
+#+BEGIN_SRC emacs-lisp
+  (use-package evil
+    :ensure t)
+#+END_SRC
+* Coding
+** Generic 'coding' hook
+- I'll define a 'generic' coding hook to execute when loading any
+  programming mode
+  #+NAME: dm/run-coding-mode-hook
+  #+BEGIN_SRC emacs-lisp
+    (defun dm/run-coding-mode-hook ()
+      "Enable functionality that is useful in any programming mode"
+      (run-hooks 'dm/coding-mode-hook))
+  #+END_SRC
+** Version control
+- I really only use git, and magit is great
+#+BEGIN_SRC emacs-lisp
+  (use-package magit
+    :commands (magit-status)
+    :ensure t
+    :bind ("C-c g" . magit-status))
+#+END_SRC
+** Smartparens mode
+#+BEGIN_SRC emacs-lisp
+  (use-package smartparens
+    :ensure t
+    :config
+    (require 'smartparens-config)
+    (bind-key "C-<right>" 'sp-forward-slurp-sexp smartparens-mode-map)
+    (bind-key "C-<left>" 'sp-forward-barf-sexp smartparens-mode-map))
+#+END_SRC
+** Paredit mode
+#+BEGIN_SRC emacs-lisp
+  (use-package paredit
+    :ensure t
+    :diminish paredit-mode)
+#+END_SRC
+** Lisps
+*** Useful stuff for all lisp-like languages
+- Define =generic-lisp-mode-hook= to run when loading any lispy
+  editing mode.
+  #+NAME: dm/generic-lisp-mode-hook
+  #+BEGIN_SRC emacs-lisp
+    (defun dm/run-generic-lisp-mode-hook ()
+      "Enable functionality that is useful in any lispy language"
+      (run-hooks 'dm/generic-lisp-mode-hook))
+  #+END_SRC
+- Parenthesis shepherding with smartparens-mode
+  #+NAME: dm/lisp-modes-use-smartparens
+  #+BEGIN_SRC emacs-lisp
+    (add-hook 'dm/generic-lisp-mode-hook 'smartparens-mode)
+    (add-hook 'dm/generic-lisp-mode-hook 'smartparens-strict-mode)
+    (add-hook 'dm/generic-lisp-mode-hook 'show-smartparens-mode)
+  #+END_SRC
+*** Emacs lisp
+- Set up configuration for working with emacs lisp
+  #+NAME: dm/emacs-lisp-config
+  #+BEGIN_SRC emacs-lisp
+    (add-hook 'emacs-lisp-mode-hook 'dm/run-coding-mode-hook)
+    (add-hook 'emacs-lisp-mode-hook 'dm/run-generic-lisp-mode-hook)
+    (add-hook 'emacs-lisp-mode-hook 'turn-on-eldoc-mode)
+  #+END_SRC
+*** Clojure
+- Set up configuration for working with clojure
+  #+NAME: dm/clojure-config
+  #+BEGIN_SRC emacs-lisp
+    (use-package cider
+      :ensure t
+      :commands (cider-jack-in cider)
+      :config
+      (add-hook 'cider-mode-hook 'cider-turn-on-eldoc-mode))
+
+    (use-package clojure-mode
+      :ensure t
+      :mode (("\\.clj[sx]?$" . clojure-mode)
+             ("\\.edn$" . clojure-mode))
+      :config
+      (add-hook 'clojure-mode-hook 'dm/run-coding-mode-hook)
+      (add-hook 'clojure-mode-hook 'dm/run-generic-lisp-mode-hook))
+
+    (use-package clojure-snippets
+      :ensure t)
+  #+END_SRC
+- Midje has weird non-standard forms, so may need special indentation treatment
+** Web --- html, css etc.
+*** HTML
+- Emmet mode is awesome!
+  #+BEGIN_SRC emacs-lisp
+    (use-package emmet-mode
+      :ensure t
+      :config 
+      (add-hook 'sgml-mode-hook 'emmet-mode)
+      (add-hook 'css-mode-hook 'emmet-mode)
+      (bind-key "C-<left>" 'emmet-prev-edit-point emmet-mode-keymap)
+      (bind-key "C-<right>" 'emmet-next-edit-point emmet-mode-keymap))
+  #+END_SRC
+* Org mode - so big it needs its own section
+** Basic setup
+- Abbreviating the modeline etc.
+  #+BEGIN_SRC emacs-lisp
+    (use-package org)
+  #+END_SRC
+** Keybindings
+#+BEGIN_SRC emacs-lisp
+  (bind-key "C-c a" 'org-agenda)
+#+END_SRC
+** Exporting
+- Helper for removing heading titles from [[http://emacs.stackexchange.com/questions/9492/is-it-possible-to-export-content-of-subtrees-without-their-headings][this stack overflow answer]]
+  #+BEGIN_SRC emacs-lisp
+    (defun org-remove-headlines (backend)
+      "Remove headlines with :no_title: tag."
+      (org-map-entries (lambda () (delete-region (point-at-bol) (point-at-eol)))
+                       "no_title"))
+
+    (add-hook 'org-export-before-processing-hook #'org-remove-headlines)
+
+    (custom-set-variables
+     '(org-tags-exclude-from-inheritance '("no_title")))
+
+  #+END_SRC
