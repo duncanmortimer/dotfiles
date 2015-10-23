@@ -51,11 +51,11 @@
 ** Backups
 - Store backups in a single location, and store lots of them
   #+BEGIN_SRC emacs-lisp
-    (setq backup-directory-alist '(("." . (expand-file-name "backups" dm/config-dir))))
+    (setq backup-directory-alist `(("." . ,(expand-file-name "backups" dm/config-dir))))
     (setq delete-old-versions -1)
     (setq version-control t)
     (setq vc-make-backup-files t)
-    (setq auto-save-file-name-transforms '((".*" (expand-file-name "auto-save-list/" dm/config-dir))))
+    (setq auto-save-file-name-transforms `((".*" ,(expand-file-name "auto-save-list/" dm/config-dir))))
   #+END_SRC
 ** When using a graphical emacs
 - I don't really like using the mouse, so menus and tooltips aren't
